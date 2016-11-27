@@ -1,0 +1,116 @@
+---
+title: "Predicting how well a weight lifting exercise activity is completed using accelerometer data"
+author: "Daniel Chaytor"
+date: "November 27, 2016"
+output: html_document
+---
+
+## Overview
+This project explores data from accelerometers on the belt, forearm, arm, and dumbell of six participants that were asked to perform barbell lifts correctly and incorrectly in five different ways. The goal is to predict the manner in which (i.e., how well) they did the exercise. 
+The six participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different ways: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Class A is the correct way, while the other classes represent incorrect ways of the performing the activity.
+
+## Getting the data
+Links to the data were provided. We first load the libraries to be used, then read in the data into training and test datasets:
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(knitr)
+
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+
+dim(training)
+dim(testing)
+```
+
+There are 160 variables in the datasets. 
+
+## Subsetting for Training and Data Cleaning
+
+First we subset the data into training and test sets. We will use 70% of the training dataset for training data and the remaining 30% as test data. The data is then cleaned, firstly to remove those variables with near zero variance, and then to remove all variables with missing values.
+
+```{r}
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
+trainSet <- training[inTrain, ]
+testSet <- training[-inTrain, ]
+
+nzv <- nearZeroVar(trainSet, saveMetrics=TRUE)
+trainSet <- trainSet[,nzv$nzv==FALSE]
+
+nzv<- nearZeroVar(testSet,saveMetrics=TRUE)
+testSet <- testSet[,nzv$nzv==FALSE]
+
+trainSet <- trainSet[,(colSums(is.na(trainSet)) == 0)]
+testSet <- testSet[,(colSums(is.na(testSet)) == 0)]
+
+trainSet <- trainSet[c(-1)] #remove first column
+testSet <- testSet[c(-1)]   #remove first column
+
+dim(trainSet)
+dim(testSet)
+```
+The resulting data has 58 variables.
+
+## Training model
+
+We will start our predictions by using decision trees. 
+
+### Decision Tree Model
+
+```{r}
+set.seed(12345)
+#modFitA1 <- train(classe~.,method="rpart", data=trainSet)
+#fancyRpartPlot(modFitA1$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+modFitA1 <- rpart(classe ~ ., data=trainSet, method="class")
+fancyRpartPlot(modFitA1)
+
+#Predict on the testing data and show confusion matrix
+predictClasse <- predict(modFitA1,testSet, type="class")
+confusionMatrix(predictClasse, testSet$classe)
+```
+
+After applying the model to the test set, the confusion matrix shows that the decision tree model gives an accuracy of about 86%, with the outcome D having the least accuracy.
+
+
+### Random Forest Model
+
+We will now build a random forest model and apply it to our data.
+
+```{r}
+#modFitRF <- train(classe ~ ., data = trainSet, method="rf", trControl=trainControl(method='cv'), #number=5, allowParallel=TRUE, importance=TRUE)
+modfitRF <- randomForest(classe ~ ., data=trainSet, importance=TRUE)
+modfitRF
+```
+
+#### Cross Validation and Out of Sample Error
+From the fitted random forest model, the OOB error rate is 0.09%. This basically means that the out of sample error is about 0.09%. According to the original random forests paper, it is not really necessary to perform cross validation when the random forest method is applied, since the error rate is estimated internally, and it is sufficiently unbiased.
+
+#### Random forest prediction
+We apply the random forest model to the test set and generate the confusion matrix.
+
+```{r}
+predictClasseRF <- predict(modfitRF, testSet, type = "class")
+confusionMatrix(predictClasseRF, testSet$classe)
+```
+
+The random forest model has a much higher accuracy of 99.88% than the decision tree method. The outcome C has the lowest accuracy with this model.
+ 
+We can also plot the importance of the different variables to the model.
+
+```{r}
+varImpPlot(modfitRF, sort = TRUE, type = 1, pch = 19, col = 1, cex = 0.6, main = "Importance of  Individual Variables")
+```
+
+##Conclusion
+This project has used two different predictive models to determine the manner in which a particular exercice was performed.
+
+Random Forests proved to give more accurate prediction results compared to decision trees. 
+
+With decision trees D was the most difficult to predict and with Random forests, C was the most difficult to predict. Among the most important variables were yaw_belt, roll_belt and pitch_belt.
