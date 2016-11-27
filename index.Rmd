@@ -32,31 +32,48 @@ dim(testing)
 
 There are 160 variables in the datasets. 
 
-## Subsetting for Training and Data Cleaning
+## Data Cleaning
 
-First we subset the data into training and test sets. We will use 70% of the training dataset for training data and the remaining 30% as test data. The data is then cleaned, firstly to remove those variables with near zero variance, and then to remove all variables with missing values.
+We start by cleaning the data, firstly to remove those variables with near zero variance, and then to remove all variables with missing values. We also remove some variables not relevant to the study, including those with timestamp data.
+
+```{r}
+nzv <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[,nzv$nzv==FALSE]
+
+nzv<- nearZeroVar(testing,saveMetrics=TRUE)
+testing <- testing[,nzv$nzv==FALSE]
+
+training <- training[,(colSums(is.na(training)) == 0)]
+testing <- testing[,(colSums(is.na(testing)) == 0)]
+
+training <- training[c(-1)] #remove first column
+testing <- testing[c(-1)]   #remove first column
+
+# Remove timestamp variables and the num_window variable
+rmtimestampcols<-!grepl("*timestamp*",names(training))
+training <- training[ ,rmtimestampcols]
+rmOthers<-!grepl("*window*",names(training))
+training <- training[ ,rmOthers]
+
+rmtimestampcols<-!grepl("*timestamp*",names(testing))
+testing <- testing[ ,rmtimestampcols]
+rmOthers<-!grepl("*window*",names(testing))
+testing <- testing[ ,rmOthers]
+
+dim(training)
+dim(testing)
+```
+The resulting datasets each have 54 variables.
+
+## Subsetting Training data into training and test datasets 
+
+Next, we subset the data into training and test sets. We will use 70% of the training dataset for training data and the remaining 30% as test data. 
 
 ```{r}
 inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
 trainSet <- training[inTrain, ]
 testSet <- training[-inTrain, ]
-
-nzv <- nearZeroVar(trainSet, saveMetrics=TRUE)
-trainSet <- trainSet[,nzv$nzv==FALSE]
-
-nzv<- nearZeroVar(testSet,saveMetrics=TRUE)
-testSet <- testSet[,nzv$nzv==FALSE]
-
-trainSet <- trainSet[,(colSums(is.na(trainSet)) == 0)]
-testSet <- testSet[,(colSums(is.na(testSet)) == 0)]
-
-trainSet <- trainSet[c(-1)] #remove first column
-testSet <- testSet[c(-1)]   #remove first column
-
-dim(trainSet)
-dim(testSet)
 ```
-The resulting data has 58 variables.
 
 ## Training model
 
@@ -76,7 +93,7 @@ predictClasse <- predict(modFitA1,testSet, type="class")
 confusionMatrix(predictClasse, testSet$classe)
 ```
 
-After applying the model to the test set, the confusion matrix shows that the decision tree model gives an accuracy of about 86%, with the outcome D having the least accuracy.
+After applying the model to the test set, the confusion matrix shows that the decision tree model gives an accuracy of about 74%, with the outcome B having the least accuracy.
 
 
 ### Random Forest Model
@@ -84,13 +101,12 @@ After applying the model to the test set, the confusion matrix shows that the de
 We will now build a random forest model and apply it to our data.
 
 ```{r}
-#modFitRF <- train(classe ~ ., data = trainSet, method="rf", trControl=trainControl(method='cv'), #number=5, allowParallel=TRUE, importance=TRUE)
 modfitRF <- randomForest(classe ~ ., data=trainSet, importance=TRUE)
 modfitRF
 ```
 
 #### Cross Validation and Out of Sample Error
-From the fitted random forest model, the OOB error rate is 0.09%. This basically means that the out of sample error is about 0.09%. According to the original random forests paper, it is not really necessary to perform cross validation when the random forest method is applied, since the error rate is estimated internally, and it is sufficiently unbiased.
+From the fitted random forest model, the OOB error rate is 0.55%. This basically means that the out of sample error is about 0.55%. According to the original random forests paper, it is not really necessary to perform cross validation when the random forest method is applied, since the error rate is estimated internally, and it is sufficiently unbiased.
 
 #### Random forest prediction
 We apply the random forest model to the test set and generate the confusion matrix.
@@ -100,12 +116,22 @@ predictClasseRF <- predict(modfitRF, testSet, type = "class")
 confusionMatrix(predictClasseRF, testSet$classe)
 ```
 
-The random forest model has a much higher accuracy of 99.88% than the decision tree method. The outcome C has the lowest accuracy with this model.
+The random forest model has a much higher accuracy (99.5%) than the decision tree method. The outcome D has the lowest accuracy with this model.
  
 We can also plot the importance of the different variables to the model.
 
 ```{r}
 varImpPlot(modfitRF, sort = TRUE, type = 1, pch = 19, col = 1, cex = 0.6, main = "Importance of  Individual Variables")
+```
+The variables yaw_belt, roll_belt,pitch_belt and magnet_dumbell_z are shown to have the most impact on the result.
+
+## Prediction of the 20 Test Cases
+
+We can now apply this model with the 99.5% accuracy to the original test data downloaded, containing 20 observations.
+
+```{r}
+predictionTest <- predict(modfitRF, testing[, -length(names(testing))])
+print(predictionTest)
 ```
 
 ##Conclusion
@@ -113,4 +139,4 @@ This project has used two different predictive models to determine the manner in
 
 Random Forests proved to give more accurate prediction results compared to decision trees. 
 
-With decision trees D was the most difficult to predict and with Random forests, C was the most difficult to predict. Among the most important variables were yaw_belt, roll_belt and pitch_belt.
+With decision trees B was the most difficult to predict and with Random forests, B was the most difficult to predict. Among the most important variables were yaw_belt, roll_belt and pitch_belt.
